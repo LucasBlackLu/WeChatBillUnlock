@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- LSPosed 旧版入口读取；API 101 的作用域在 META-INF/xposed/scope.list -->
+    <string-array name="xposed_scope">
+        <item>com.oplus.gleanerservice</item>
+    </string-array>
+</resources>
