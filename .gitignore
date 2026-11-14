@@ -23,3 +23,12 @@ local.properties
 # OS
 .DS_Store
 Thumbs.db
+
+# 云控规则快照（每次同步一份，体积不小）
+/tools/snapshots/
+
+# 带版本号的产物
+/dist/
+
+# README ������
+/tools/whitelist_section.md

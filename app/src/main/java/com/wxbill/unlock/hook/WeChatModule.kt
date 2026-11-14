@@ -1,4 +1,4 @@
-package com.wxbill.unlock.hook
+﻿package com.wxbill.unlock.hook
 
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -11,6 +11,7 @@ import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface.PackageLoadedParam
 import io.github.libxposed.api.XposedModuleInterface.PackageReadyParam
 import java.lang.reflect.Modifier
+import java.util.zip.ZipFile
 
 /**
  * 微信记账补丁（libxposed API 101）。
@@ -46,6 +47,7 @@ class WeChatModule : XposedModule() {
 
     @Volatile private var patched = 0
     @Volatile private var receiverReady = false
+    @Volatile private var builtinWhitelist: String? = null
     private val logged = HashSet<String>()
 
     override fun onPackageLoaded(param: PackageLoadedParam) {
@@ -140,7 +142,9 @@ class WeChatModule : XposedModule() {
         hook(getter).intercept { chain ->
             val raw = chain.proceed() as? String
             val self = chain.thisObject ?: return@intercept raw
-            val fixed = WeChatRule.repair(rowOf(self), raw)
+            val row = rowOf(self)
+            val fixed = WeChatRule.repair(row, raw)
+                ?: WeChatRule.mergeWhitelist(row, raw, whitelistJson())
             if (fixed != null) {
                 patched++
                 logOnce("repair ext at getExt()")
@@ -161,17 +165,119 @@ class WeChatModule : XposedModule() {
             cls.declaredMethods.forEach { m ->
                 if (!List::class.java.isAssignableFrom(m.returnType)) return@forEach
                 if (m.parameterTypes.size > 4) return@forEach
+                val tag = "${owner.substringAfterLast('.')}#${m.name}"
                 runCatching {
                     hook(m).intercept { chain ->
                         val result = chain.proceed()
                         patchAll(result)
-                        result
+                        // 云控里没有小程序行时，补上；补不了就返回原列表
+                        injectMiniProgram(result, tag) ?: result
                     }
                     n++
                 }
             }
         }
         log("hooked $n list-return(s), repaired=$patched")
+    }
+
+    // ------------------------------------------------------------ 小程序补行
+
+    /**
+     * 云端（上海 IP 那份）的 flashNotes_autoPayment 只给了 7 个 Activity，
+     * 没有任何小程序容器。这里照抄微信那一行的字段，clone 出小程序行。
+     *
+     * Room 实体没有空构造，用 Unsafe.allocateInstance 绕过构造函数，再按字段名覆盖。
+     */
+    private fun injectMiniProgram(value: Any?, tag: String): List<Any?>? {
+        if (value !is List<*>) return null
+
+        val template = value.firstOrNull { item ->
+            item != null && WeChatRule.isWeChat(rowOf(item))
+        } ?: return null
+
+        val existing = value.filterNotNull().mapNotNull { rowOf(it).pageControl }.toSet()
+        val missing = WeChatRule.MINI_ACTIVITIES.filterNot { it in existing }
+        if (missing.isEmpty()) return null
+
+        val appName = rowOf(template).appName.orEmpty().substringBefore('-').ifBlank { "微信" }
+        val out = ArrayList<Any?>(value.size + missing.size)
+        out.addAll(value)
+        var added = 0
+        missing.forEach { activity ->
+            val ext = WeChatRule.build(appName, WeChatRule.MINI_PAGE, activity)
+            val row = cloneEntity(template, WeChatRule.MINI_PAGE, activity, ext, -1000L - added)
+            if (row != null) {
+                out.add(row)
+                added++
+            }
+        }
+        if (added == 0) return null
+        logOnce("mini rows +$added -> ${out.size} @$tag")
+        // 抽查一条，确认 Unsafe 造出来的实体字段确实落对了
+        out.getOrNull(value.size)?.let { first ->
+            val page = rowOf(first).pageName
+            val act = rowOf(first).pageControl
+            val ext = field(first, "ext") as? String
+            logOnce("mini sample: $page | $act | ext=${ext?.length ?: -1}")
+        }
+        return out
+    }
+
+    /** 用 Unsafe 造一个同类型实例，字段逐个照抄模板，再覆盖页面相关字段。 */
+    private fun cloneEntity(
+        template: Any,
+        pageName: String,
+        activity: String,
+        ext: String,
+        id: Long
+    ): Any? {
+        val unsafe = unsafe ?: return null
+        val allocate = allocateInstance ?: return null
+        val copy = runCatching { allocate.invoke(unsafe, template.javaClass) }.getOrNull() ?: return null
+
+        var c: Class<*>? = template.javaClass
+        while (c != null && c != Any::class.java) {
+            c.declaredFields.forEach { f ->
+                if (Modifier.isStatic(f.modifiers)) return@forEach
+                runCatching {
+                    f.isAccessible = true
+                    f.set(copy, f.get(template))
+                }
+            }
+            c = c.superclass
+        }
+
+        setField(copy, "pageName", pageName)
+        setField(copy, "pageControlName", activity)
+        setField(copy, "activityName", activity)
+        setField(copy, "ext", ext)
+        setFieldOfType(copy, "id", id)
+        return copy
+    }
+
+    private val unsafe: Any? by lazy {
+        runCatching {
+            val cls = Class.forName("sun.misc.Unsafe")
+            val f = cls.getDeclaredField("theUnsafe").apply { isAccessible = true }
+            f.get(null)
+        }.getOrNull()
+    }
+
+    private val allocateInstance: java.lang.reflect.Method? by lazy {
+        val u = unsafe ?: return@lazy null
+        runCatching { u.javaClass.getMethod("allocateInstance", Class::class.java) }.getOrNull()
+    }
+
+    /** 只按类型赋值，避免 Long / Integer 对不上丢异常。 */
+    private fun setFieldOfType(obj: Any, name: String, value: Long) {
+        runCatching {
+            val f = obj.javaClass.getDeclaredField(name).apply { isAccessible = true }
+            when (f.type) {
+                java.lang.Long.TYPE -> f.set(obj, value)
+                java.lang.Integer.TYPE -> f.set(obj, value.toInt())
+                else -> Unit
+            }
+        }
     }
 
     private fun patchAll(value: Any?) {
@@ -190,10 +296,31 @@ class WeChatModule : XposedModule() {
     private fun patchOne(item: Any?) {
         if (item == null || item.javaClass.name != ENTITY) return
         val ext = field(item, "ext") as? String
-        val fixed = WeChatRule.repair(rowOf(item), ext) ?: return
+        val row = rowOf(item)
+        val fixed = WeChatRule.repair(row, ext)
+            ?: WeChatRule.mergeWhitelist(row, ext, whitelistJson())
+            ?: return
         if (setField(item, "ext", fixed)) {
             patched++
             logOnce("repair ext at list-return")
+        }
+    }
+
+    /** 模块 assets 里那份小程序白名单（91 个），第一次用到时读出来。 */
+    private fun whitelistJson(): String? {
+        builtinWhitelist?.let { return it.ifEmpty { null } }
+        synchronized(logged) {
+            builtinWhitelist?.let { return it.ifEmpty { null } }
+            val text = runCatching {
+                val info = getModuleApplicationInfo()
+                ZipFile(info.sourceDir).use { zip ->
+                    val entry = zip.getEntry("assets/miniapp_whitelist.json") ?: return@use null
+                    zip.getInputStream(entry).use { it.readBytes().toString(Charsets.UTF_8) }
+                }
+            }.getOrNull()
+            builtinWhitelist = text.orEmpty()
+            if (text != null) logOnce("whitelist loaded ${text.length}B")
+            return text
         }
     }
 

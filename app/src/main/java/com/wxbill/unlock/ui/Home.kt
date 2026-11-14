@@ -163,6 +163,12 @@ fun HomePage(
                     trailingText = if (status.wechatVersion != null) "已安装" else "未安装"
                 )
                 PuiListRow(
+                    icon = PuiIcon.Check,
+                    title = "微信小程序",
+                    subtitle = "付款后回到微信收银台 / 账单页时记账",
+                    trailingText = "部分支持"
+                )
+                PuiListRow(
                     icon = PuiIcon.Clock,
                     title = "上次操作",
                     subtitle = status.appliedLine,
