@@ -15,6 +15,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,11 +30,18 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install SDK packages
+      - name: Accept SDK licenses
         run: |
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          (sdkmanager "platforms;android-37.0" "build-tools;36.0.0" "platform-tools" \
-            || sdkmanager "platforms;android-37" "build-tools;36.0.0" "platform-tools") > /dev/null
+          sdkmanager --list_installed 2>/dev/null | head -30 || true
+
+      - name: Install SDK packages (best effort)
+        run: |
+          sdkmanager "platform-tools" "build-tools;36.0.0" > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-37.0" > /dev/null 2>&1 \
+            || sdkmanager "platforms;android-37" > /dev/null 2>&1 || true
+          sdkmanager --list_installed 2>/dev/null | grep -E 'platforms|build-tools' || true
+
 
       - name: Read version from Const.kt
         id: ver
@@ -50,7 +58,12 @@ jobs:
       - name: Build signed APK
         run: |
           chmod +x gradlew
-          ./gradlew :app:distApk --no-daemon --stacktrace
+          ./gradlew :app:distApk --no-daemon --stacktrace --warning-mode=summary
+
+      - name: Show artifact
+        run: |
+          ls -lh dist/
+          ls -lh app/build/outputs/apk/release/ 2>/dev/null || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
