@@ -3,7 +3,7 @@ package com.wxbill.unlock
 /** 模块类和应用类都会读到，只放纯常量。 */
 object Const {
 
-    const val VERSION = "2.2.1"
+    const val VERSION = "2.2.2"
 
     /** 智慧数据感知 */
     const val TARGET = "com.oplus.gleanerservice"

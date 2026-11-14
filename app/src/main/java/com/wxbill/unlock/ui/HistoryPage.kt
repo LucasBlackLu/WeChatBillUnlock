@@ -1,26 +1,32 @@
 package com.wxbill.unlock.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.wxbill.unlock.core.EnabledApps
 import com.wxbill.unlock.core.History
+import com.wxbill.unlock.core.MiniPrograms
 import com.wxbill.unlock.pui.PuiGroup
 import com.wxbill.unlock.pui.PuiIcon
 import com.wxbill.unlock.pui.PuiListRow
-import com.wxbill.unlock.pui.PuiNoticeCard
 import com.wxbill.unlock.pui.PuiPageTitle
 import com.wxbill.unlock.pui.PuiSectionHeader
 import com.wxbill.unlock.pui.rememberStatusBarHeight
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 
 /**
- * 历史页：上面是「已经打开自动记账的应用」，下面是模块记录到的记账触发。
- * 两者都要 root 才能读到；读不到就说清楚，不装作有数据。
+ * 历史页：可记账的应用 + 记账触发记录。
+ * 点「微信」进小程序列表（内置白名单，和模块里那份同一个文件）。
  */
 @Composable
 fun HistoryPage(
@@ -28,6 +34,12 @@ fun HistoryPage(
     history: List<History.Item>?,
     onRefresh: () -> Unit
 ) {
+    var showMini by remember { mutableStateOf(false) }
+    if (showMini) {
+        MiniProgramList(onBack = { showMini = false })
+        return
+    }
+
     val top = rememberStatusBarHeight()
 
     LazyColumn(
@@ -64,12 +76,15 @@ fun HistoryPage(
                     )
 
                     else -> apps.forEachIndexed { index, item ->
+                        val wechat = item.pkg == "com.tencent.mm"
                         PuiListRow(
                             icon = PuiIcon.Check,
                             title = item.label,
                             subtitle = item.pkg,
-                            trailingText = "已开启",
-                            showDivider = index != apps.lastIndex
+                            trailingText = if (wechat) "小程序" else "已开启",
+                            showChevron = wechat,
+                            showDivider = index != apps.lastIndex,
+                            onClick = if (wechat) ({ showMini = true }) else null
                         )
                     }
                 }
@@ -112,15 +127,53 @@ fun HistoryPage(
                 }
             }
         }
+    }
+}
+
+/** 微信支持的小程序列表。 */
+@Composable
+private fun MiniProgramList(onBack: () -> Unit) {
+    val ctx = LocalContext.current
+    val top = rememberStatusBarHeight()
+    val items = remember { MiniPrograms.load(ctx) }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top + 16.dp, bottom = 16.dp)
+    ) {
+        item {
+            PuiGroup(null) {
+                PuiListRow(
+                    icon = PuiIcon.ChevronRight,
+                    title = "返回",
+                    subtitle = "历史",
+                    showDivider = false,
+                    onClick = onBack
+                )
+            }
+        }
 
         item {
-            Spacer(Modifier.height(16.dp))
-            PuiNoticeCard(
-                title = "记录怎么来的",
-                text = "模块每次替微信补齐规则（也就是小布开始认付款页）就记一条，同一页面一分钟只记一次，" +
-                    "最多留 200 条。金额明细在小布记忆里，这里只看触发。",
-                icon = PuiIcon.Info
-            )
+            Spacer(Modifier.height(14.dp))
+            PuiPageTitle("支持的小程序")
+            Spacer(Modifier.height(6.dp))
+        }
+
+        item {
+            PuiSectionHeader("共 ${items.size} 个")
+        }
+
+        item {
+            PuiGroup(null) {
+                items.forEachIndexed { index, item ->
+                    PuiListRow(
+                        icon = PuiIcon.Check,
+                        title = item.name,
+                        subtitle = item.appId,
+                        showDivider = index != items.lastIndex
+                    )
+                }
+            }
         }
     }
 }
