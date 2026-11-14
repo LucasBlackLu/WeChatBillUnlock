@@ -18,7 +18,7 @@ object History {
 
     private const val TAG = "WxBill"
     private const val NAME = "wxbill_history.tsv"
-    private const val MAX_LINES = 200
+    private const val MAX_LINES = 500
     private const val DEDUPE_MS = 60_000L
 
     private val fmt = SimpleDateFormat("MM-dd HH:mm:ss", Locale.CHINA)

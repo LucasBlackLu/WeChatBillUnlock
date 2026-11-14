@@ -97,12 +97,12 @@ fun HistoryPage(
                         showDivider = false
                     )
 
-                    else -> history.take(60).forEachIndexed { index, item ->
+                    else -> history.forEachIndexed { index, item ->
                         PuiListRow(
                             icon = PuiIcon.Check,
                             title = item.page,
                             subtitle = "${item.time} · ${item.app} · ${item.shortActivity}",
-                            showDivider = index != minOf(history.size, 60) - 1
+                            showDivider = index != history.lastIndex
                         )
                     }
                 }
