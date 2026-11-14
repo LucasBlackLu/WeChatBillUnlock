@@ -17,6 +17,7 @@ import com.wxbill.unlock.core.MiniPrograms
 import com.wxbill.unlock.pui.PuiGroup
 import com.wxbill.unlock.pui.PuiIcon
 import com.wxbill.unlock.pui.PuiListRow
+import com.wxbill.unlock.pui.PuiNoticeCard
 import com.wxbill.unlock.pui.PuiPageTitle
 import com.wxbill.unlock.pui.PuiSectionHeader
 import com.wxbill.unlock.pui.rememberStatusBarHeight
@@ -161,6 +162,16 @@ private fun MiniProgramList(onBack: () -> Unit) {
 
         item {
             PuiSectionHeader("共 ${items.size} 个")
+        }
+
+        item {
+            Spacer(Modifier.height(10.dp))
+            PuiNoticeCard(
+                title = "只记金额",
+                text = "小程序页面由微信自己绘制，系统读不到里面的商户和订单。" +
+                    "付款时落到的「微信收银台」能记下金额和时间，回到小程序内的详情读不到。",
+                icon = PuiIcon.Info
+            )
         }
 
         item {
