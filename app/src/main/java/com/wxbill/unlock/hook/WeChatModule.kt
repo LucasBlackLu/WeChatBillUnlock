@@ -119,6 +119,28 @@ class WeChatModule : XposedModule() {
                 n++
             }.onFailure { log("hook repo#${m.name}: $it") }
         }
+        // 顺便把返回体抓下来：RuleConfigHttpResponse(code, data) 里 data 就是我们缺的东西
+        runCatching {
+            val respCls = cl.loadClass("com.oplus.gleanerservice.extract.rule.http.RuleConfigHttpResponse")
+            respCls.declaredConstructors.forEach { ctor ->
+                runCatching {
+                    hook(ctor).intercept { chain ->
+                        runCatching {
+                            val dump = chain.args.joinToString(" | ") { arg ->
+                                when (arg) {
+                                    null -> "null"
+                                    is String -> arg.take(120)
+                                    else -> toJson(arg)?.take(900) ?: arg.toString()
+                                }
+                            }
+                            logOnce("resp(${chain.args.size}) $dump")
+                        }
+                        chain.proceed()
+                    }
+                }
+            }
+        }.onFailure { log("hook response ctor: $it") }
+
         if (n == 0) {
             cls.declaredMethods.take(20).forEach { m ->
                 logOnce("repo sig ${m.name}(${m.parameterTypes.joinToString { it.name }}) ret=${m.returnType.name}")
