@@ -12,7 +12,7 @@ WeChatBillUnlock/
 │   │   ├── WeChatModule.kt    模块入口：getExt / 规则列表 / 小程序补行 / 代开自动记账
 │   │   └── WeChatRule.kt      纯 JSON 逻辑：合成 ext、合并小程序白名单
 │   ├── core/                  状态、root 命令、PendingIntent 代开、桌面图标
-│   ├── ui/                    首页 / 说明
+│   ├── ui/                    首页 / 历史 / 设置
 │   └── pui/                   PUI 设计系统（从 PUIInstaller 搬入）
 ├── app/src/main/assets/miniapp_whitelist.json   91 条小程序白名单
 ├── keystore/wxbill.jks        固定签名，保证处处可覆盖安装
@@ -53,6 +53,18 @@ WeChatBillUnlock/
 
 ---
 
+## 三个页面
+
+| 页 | 内容 |
+|---|---|
+| 首页 | 重启智慧数据感知 / 打开自动记账 + 运行状态（模块、作用域、root、上次操作） |
+| 历史 | 已开自动记账的应用（微信、云闪付、拼多多、支付宝、银联），以及模块记录到的记账触发 |
+| 设置 | 快捷入口（LSPosed）、关注我（GitHub / 酷安）、桌面图标、关于与检查更新 |
+
+历史里的「记账触发」由模块写进 gleanerservice/files/wxbill_history.tsv（同一页面一分钟只记一次，最多 200 条），
+应用用 su -M 读出来 —— 不写小布数据库，也不碰它的设置。
+
+---
 ## 暂时记不上的
 
 - **小程序内页**：付款完成后回到小程序自己的页面，系统读不到内容（**京东购物小程序实测不行**）。

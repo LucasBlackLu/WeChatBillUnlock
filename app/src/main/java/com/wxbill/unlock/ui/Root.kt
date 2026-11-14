@@ -23,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.wxbill.unlock.Link
+import com.wxbill.unlock.core.EnabledApps
+import com.wxbill.unlock.core.History
 import com.wxbill.unlock.core.Local
 import com.wxbill.unlock.core.Shell
 import com.wxbill.unlock.core.Status
@@ -34,7 +36,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 两页：状态 / 说明。底栏是 PUI 的悬浮胶囊。
+ * 三页：首页 / 历史 / 设置。底栏是 PUI 的悬浮胶囊。
  *
  * 主按钮「重启智慧数据感知」：有 root 就一步强停 + 拉起；
  * 没有 root 就打开应用信息页，让用户点「强制停止」。
@@ -54,6 +56,7 @@ fun Root() {
         )
     }
     var busy by remember { mutableStateOf(false) }
+    var apps by remember { mutableStateOf<List<EnabledApps.Item>?>(null) }
     val scope = rememberCoroutineScope()
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
@@ -74,6 +77,26 @@ fun Root() {
             delay(1500)
         }
     }
+
+    // 历史页要的两样数据：已开自动记账的应用 + 模块写下的触发记录。
+    // 都靠 su -M 读别的应用目录，只在进历史页或手动刷新时读。
+    var history by remember { mutableStateOf<List<History.Item>?>(null) }
+
+    fun loadHistory() {
+        scope.launch {
+            val pair = withContext(Dispatchers.IO) {
+                if (root == true || Shell.rootGranted == true) {
+                    EnabledApps.read() to History.read()
+                } else {
+                    null to null
+                }
+            }
+            apps = pair.first
+            history = pair.second
+        }
+    }
+
+    LaunchedEffect(tab) { if (tab == 1) loadHistory() }
 
     val status = remember(now, Link.service, Link.scope, root) { Status.read(ctx, root == true) }
 
@@ -105,15 +128,16 @@ fun Root() {
                     onRestart = ::restart,
                     onCheckRoot = { checkRoot(true) }
                 )
+                1 -> HistoryPage(apps = apps, history = history, onRefresh = ::loadHistory)
                 else -> AboutPage()
             }
         }
 
         PuiFloatingNavBar(
-            items = listOf("状态", "说明"),
+            items = listOf("首页", "历史", "设置"),
             selectedIndex = tab,
             onSelect = { tab = it },
-            icons = listOf(PuiIcon.Check, PuiIcon.Info),
+            icons = listOf(PuiIcon.Home, PuiIcon.Clock, PuiIcon.Element),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = navBottom + 18.dp)

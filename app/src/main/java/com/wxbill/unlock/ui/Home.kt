@@ -30,7 +30,6 @@ import com.wxbill.unlock.pui.PuiGroup
 import com.wxbill.unlock.pui.PuiHeroCard
 import com.wxbill.unlock.pui.PuiIcon
 import com.wxbill.unlock.pui.PuiListRow
-import com.wxbill.unlock.pui.PuiNoticeCard
 import com.wxbill.unlock.pui.PuiPageTitle
 import com.wxbill.unlock.pui.PuiSectionHeader
 import com.wxbill.unlock.pui.rememberStatusBarHeight
@@ -46,7 +45,7 @@ import kotlinx.coroutines.withContext
 fun HomePage(
     status: Status,
     busy: Boolean,
-    onRestart: () -> Unit,
+        onRestart: () -> Unit,
     onCheckRoot: () -> Unit
 ) {
     val ctx = LocalContext.current
@@ -156,34 +155,12 @@ fun HomePage(
                     onClick = if (status.root) null else onCheckRoot
                 )
                 PuiListRow(
-                    icon = PuiIcon.User,
-                    title = "微信",
-                    subtitle = status.wechatVersion?.let { "版本 $it" } ?: "未安装",
-                    trailingText = if (status.wechatVersion != null) "已安装" else "未安装"
-                )
-                PuiListRow(
-                    icon = PuiIcon.Check,
-                    title = "微信小程序",
-                    subtitle = "付款后回到微信收银台 / 账单页时记账",
-                    trailingText = "部分支持"
-                )
-                PuiListRow(
                     icon = PuiIcon.Clock,
                     title = "上次操作",
                     subtitle = status.appliedLine,
                     showDivider = false
                 )
             }
-        }
-
-        item {
-            Spacer(Modifier.height(16.dp))
-            PuiNoticeCard(
-                title = "这些暂时记不上",
-                text = "在京东、美团这类应用里直接付款，或在京东购物等小程序里付款，" +
-                    "目前记不上账。付完落到微信收银台、账单页的能记。",
-                icon = PuiIcon.Info
-            )
         }
     }
 }

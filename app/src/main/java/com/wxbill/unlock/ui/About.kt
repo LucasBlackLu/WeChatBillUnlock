@@ -19,13 +19,12 @@ import com.wxbill.unlock.core.Shell
 import com.wxbill.unlock.pui.PuiGroup
 import com.wxbill.unlock.pui.PuiIcon
 import com.wxbill.unlock.pui.PuiListRow
-import com.wxbill.unlock.pui.PuiNoticeCard
 import com.wxbill.unlock.pui.PuiPageTitle
 import com.wxbill.unlock.pui.PuiSectionHeader
 import com.wxbill.unlock.pui.PuiSwitchRow
 import com.wxbill.unlock.pui.rememberStatusBarHeight
 
-/** 只讲怎么用，不讲实现。 */
+/** 设置页：关于 / 快捷入口 / 关注我 / 外观。 */
 @Composable
 fun AboutPage() {
     val ctx = LocalContext.current
@@ -37,19 +36,10 @@ fun AboutPage() {
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top + 16.dp, bottom = 16.dp)
     ) {
         item {
-            PuiPageTitle("说明")
+            PuiPageTitle("设置")
             Spacer(Modifier.height(14.dp))
         }
 
-        item {
-            PuiNoticeCard(
-                title = "三步",
-                text = "1. 在 LSPosed 里启用「小布微信记账」，作用域勾选「智慧数据感知」\n" +
-                    "2. 回到本页点「重启智慧数据感知」\n" +
-                    "3. 点「打开自动记账」，打开微信开关",
-                icon = PuiIcon.Check
-            )
-        }
 
         item {
             Spacer(Modifier.height(22.dp))
@@ -63,27 +53,40 @@ fun AboutPage() {
                     title = "打开 LSPosed",
                     subtitle = "检查模块是否启用、作用域是否勾选",
                     showChevron = true,
+                    showDivider = false,
                     onClick = { Shell.openLsposed(ctx) }
-                )
-                PuiListRow(
-                    icon = PuiIcon.Share,
-                    title = "GitHub",
-                    subtitle = "LucasBlackLu/WeChatBillUnlock",
-                    showChevron = true,
-                    onClick = { Shell.openUrl(ctx, Const.GITHUB) }
-                )
-                PuiListRow(
-                    icon = PuiIcon.Info,
-                    title = "版本",
-                    subtitle = Const.VERSION,
-                    showDivider = false
                 )
             }
         }
 
         item {
-            Spacer(Modifier.height(18.dp))
-            PuiSectionHeader("设置")
+            Spacer(Modifier.height(22.dp))
+            PuiSectionHeader("关注我")
+        }
+
+        item {
+            PuiGroup(null) {
+                PuiListRow(
+                    icon = PuiIcon.Star,
+                    title = "GitHub",
+                    subtitle = "喜欢我的工作就点个 Star",
+                    showChevron = true,
+                    onClick = { Shell.openUrl(ctx, Const.GITHUB) }
+                )
+                PuiListRow(
+                    icon = PuiIcon.Heart,
+                    title = "酷安",
+                    subtitle = "顺手点个关注，是我更新的最大动力",
+                    showChevron = true,
+                    showDivider = false,
+                    onClick = { Shell.openUrl(ctx, Const.COOLAPK) }
+                )
+            }
+        }
+
+        item {
+            Spacer(Modifier.height(22.dp))
+            PuiSectionHeader("外观")
         }
 
         item {
@@ -98,6 +101,30 @@ fun AboutPage() {
                         Desktop.setIcon(ctx, it)
                     },
                     showDivider = false
+                )
+            }
+        }
+
+        item {
+            Spacer(Modifier.height(22.dp))
+            PuiSectionHeader("关于")
+        }
+
+        item {
+            PuiGroup(null) {
+                PuiListRow(
+                    icon = PuiIcon.Element,
+                    title = "小布微信记账",
+                    subtitle = "给「小布记忆 → 自动记账」补上微信与微信小程序的规则"
+                )
+                PuiListRow(
+                    icon = PuiIcon.Info,
+                    title = "版本",
+                    subtitle = Const.VERSION,
+                    trailingText = "检查更新",
+                    showChevron = true,
+                    showDivider = false,
+                    onClick = { Shell.openUrl(ctx, Const.RELEASES) }
                 )
             }
         }

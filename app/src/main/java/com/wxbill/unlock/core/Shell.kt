@@ -25,16 +25,19 @@ object Shell {
     var rootGranted: Boolean? = null
         private set
 
-    fun run(cmd: String): Result = runCatching {
-        val p = ProcessBuilder("su", "-c", cmd).redirectErrorStream(true).start()
+    fun run(cmd: String): Result = runRaw("su -c \"$cmd\"")
+
+    /** 原样交给 sh，命令自己带 su 参数时用。 */
+    fun runRaw(line: String): Result = runCatching {
+        val p = ProcessBuilder("sh", "-c", line).redirectErrorStream(true).start()
         val out = p.inputStream.bufferedReader().use { it.readText() }.trim()
         val done = p.waitFor(15, TimeUnit.SECONDS)
         if (!done) {
             p.destroy()
-            return Result(false, "su 超时")
+            return Result(false, "超时")
         }
         Result(p.exitValue() == 0 && !out.contains("Error", ignoreCase = true), out)
-    }.getOrElse { Result(false, it.message ?: "su 不可用") }
+    }.getOrElse { Result(false, it.message ?: "sh 不可用") }
 
     fun checkRoot(): Boolean {
         val r = run("id")

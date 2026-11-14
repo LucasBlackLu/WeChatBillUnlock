@@ -1,4 +1,4 @@
-﻿package com.wxbill.unlock.hook
+package com.wxbill.unlock.hook
 
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -148,6 +148,12 @@ class WeChatModule : XposedModule() {
             if (fixed != null) {
                 patched++
                 logOnce("repair ext at getExt()")
+                History.record(
+                    currentApplication(),
+                    row.appName.orEmpty().substringBefore('-').ifBlank { "微信" },
+                    row.pageName.orEmpty().ifBlank { "支付完成页" },
+                    row.pageControl.orEmpty()
+                )
                 fixed
             } else {
                 raw
@@ -303,6 +309,12 @@ class WeChatModule : XposedModule() {
         if (setField(item, "ext", fixed)) {
             patched++
             logOnce("repair ext at list-return")
+            History.record(
+                currentApplication(),
+                row.appName.orEmpty().substringBefore('-').ifBlank { "微信" },
+                row.pageName.orEmpty().ifBlank { "支付完成页" },
+                row.pageControl.orEmpty()
+            )
         }
     }
 
