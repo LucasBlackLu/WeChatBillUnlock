@@ -121,8 +121,9 @@ object WeChatRule {
     /** 直接合成一份完整的微信自动记账 ext（小程序补行也走这里）。 */
     fun build(appName: String, pageName: String, activity: String): String {
         val bill = pageName.contains("账单")
-        val webView = activity.contains("WebView", ignoreCase = true) ||
-            activity.contains("AppBrand", ignoreCase = true)
+        // 只有真的 WebView 才按网页去抓；小程序（AppBrand）的页面是原生控件，
+        // 实测 uiautomator 能读到文字，所以按 native 走读视图树。
+        val webView = activity.contains("WebView", ignoreCase = true)
 
         return JSONObject().apply {
             put("appName", appName)
