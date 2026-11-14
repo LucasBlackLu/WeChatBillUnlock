@@ -224,7 +224,7 @@ $env:JAVA_HOME = "$env:USERPROFILE\.jdks\jbr-21.0.11"
 ## 工具
 
 `tools/` 里都是分析脚本，不影响构建，见 `tools/README.md`。
-常用的两个：`sync_rules.py`（拉云控 `scene_rule` 快照并和上一份 diff）、`pull_whitelist.py`。
+常用的几个：`sync_rules.py`（拉云控 `scene_rule` 快照并和上一份 diff）、`pull_whitelist.py`（拉小程序白名单）、`import_csv_rules.py`（把备份 CSV 里的规则导进手机 `scene_rule`，顺手补齐微信自动记账那几行的 ext）。
 
 ---
 
