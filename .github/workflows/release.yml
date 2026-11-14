@@ -1,0 +1,95 @@
+name: build & release
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          (sdkmanager "platforms;android-37.0" "build-tools;36.0.0" "platform-tools" \
+            || sdkmanager "platforms;android-37" "build-tools;36.0.0" "platform-tools") > /dev/null
+
+      - name: Read version from Const.kt
+        id: ver
+        run: |
+          V=$(grep -oP 'const val VERSION = "\K[^"]+' app/src/main/java/com/wxbill/unlock/Const.kt)
+          if [ -z "$V" ]; then
+            echo "VERSION not found in Const.kt"
+            exit 1
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "tag=v$V" >> "$GITHUB_OUTPUT"
+          echo "building $V"
+
+      - name: Build signed APK
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:distApk --no-daemon --stacktrace
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WeChatBillUnlock-${{ steps.ver.outputs.version }}
+          path: dist/*.apk
+          if-no-files-found: error
+
+      - name: Check whether the tag already exists
+        id: check
+        run: |
+          if git ls-remote --tags origin "refs/tags/${{ steps.ver.outputs.tag }}" | grep -q .; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "tag ${{ steps.ver.outputs.tag }} already exists, skipping release"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub release
+        if: steps.check.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: WeChatBillUnlock ${{ steps.ver.outputs.version }}
+          files: dist/WeChatBillUnlock-${{ steps.ver.outputs.version }}.apk
+          generate_release_notes: true
+          make_latest: true
+          body: |
+            ## WeChatBillUnlock ${{ steps.ver.outputs.version }}
+
+            Install with `adb install -r WeChatBillUnlock-${{ steps.ver.outputs.version }}.apk`,
+            or just open the file on the device.
+
+            **Setup**
+
+            1. Enable the module in LSPosed, scope it to 智慧数据感知 (`com.oplus.gleanerservice`).
+            2. Open this app, tap restart 智慧数据感知, then open 自动记账 and turn on 微信.
+            3. WeChat mini programs: recorded when the payment lands on a WeChat page
+               (cashier / bill detail). Pages rendered inside the mini program itself are
+               not readable by the system.
+
+            Changes below are generated from commit messages.

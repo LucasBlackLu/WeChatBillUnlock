@@ -92,9 +92,10 @@ if (-not (Test-Path (Join-Path $root 'gradlew.bat'))) {
 }
 
 Write-Host "[+] 开始编译 ..." -ForegroundColor Cyan
-& (Join-Path $root 'gradlew.bat') :app:assembleDebug
+& (Join-Path $root 'gradlew.bat') :app:distApk
 
-$apk = Get-ChildItem -Path (Join-Path $root 'app\build\outputs\apk\debug') -Filter *.apk -ErrorAction SilentlyContinue |
+# 产物固定在 dist\，文件名带版本号（版本号来自 Const.kt）
+$apk = Get-ChildItem -Path (Join-Path $root 'dist') -Filter *.apk -ErrorAction SilentlyContinue |
        Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if ($apk) {
     Write-Host ""

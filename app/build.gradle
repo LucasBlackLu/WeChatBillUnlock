@@ -3,6 +3,13 @@ plugins {
     id 'org.jetbrains.kotlin.plugin.compose'
 }
 
+// 版本号只有一个来源：Const.kt 里的 VERSION
+def constKt = file('src/main/java/com/wxbill/unlock/Const.kt')
+def versionMatcher = (constKt.text =~ /const val VERSION = "([0-9][^"]*)"/)
+def appVersion = versionMatcher.find() ? versionMatcher.group(1) : '0.0.0'
+def versionParts = appVersion.tokenize('.').collect { it.isInteger() ? it.toInteger() : 0 }
+while (versionParts.size() < 3) { versionParts << 0 }
+
 android {
     // 包名不能以 com.oppo. / com.oplus. 开头，否则 ColorOS 要求平台签名
     namespace 'com.wxbill.unlock'
@@ -12,17 +19,29 @@ android {
         applicationId "com.wxbill.unlock"
         minSdk 33
         targetSdk 37
-        versionCode 202
-        versionName "2.0.2"
+        // 2.1.0 -> 20100，和 Const.VERSION 永远一致
+        versionCode versionParts[0] * 10000 + versionParts[1] * 100 + versionParts[2]
+        versionName appVersion
     }
 
     buildFeatures {
         compose true
     }
 
+    signingConfigs {
+        release {
+            storeFile rootProject.file('keystore/wxbill.jks')
+            storePassword 'wxbillunlock'
+            keyAlias 'wxbill'
+            keyPassword 'wxbillunlock'
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
+            // 固定的签名，保证每次发版都能覆盖安装（debug 签名每台机器都不同）
+            signingConfig signingConfigs.release
         }
     }
 
@@ -52,4 +71,27 @@ dependencies {
     // libxposed API 101：模块入口 + 应用侧服务（RemotePreferences / scope）
     compileOnly 'io.github.libxposed:api:101.0.0'
     implementation 'io.github.libxposed:service:101.0.0'
+}
+
+// ---------------------------------------------------------------- 产物命名
+// 每次编译都产出一个带版本号的 APK：dist/WeChatBillUnlock-<版本>.apk
+def distDir = rootProject.layout.projectDirectory.dir('dist')
+
+tasks.register('distApk') {
+    group = 'dist'
+    description = "把 APK 复制成带版本号的文件（dist/WeChatBillUnlock-${appVersion}.apk）"
+
+    dependsOn 'assembleRelease'
+
+    doLast {
+        def outDir = file(layout.buildDirectory.dir('outputs/apk/release'))
+        def built = outDir.listFiles()?.find { it.name.endsWith('.apk') }
+        if (built == null) {
+            throw new GradleException("没找到 APK：${outDir}")
+        }
+        def target = new File(distDir.asFile, "WeChatBillUnlock-${appVersion}.apk")
+        target.parentFile.mkdirs()
+        target.bytes = built.bytes
+        logger.lifecycle("[dist] ${target}")
+    }
 }
