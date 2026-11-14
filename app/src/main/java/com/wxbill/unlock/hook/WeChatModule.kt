@@ -11,6 +11,7 @@ import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface.PackageLoadedParam
 import io.github.libxposed.api.XposedModuleInterface.PackageReadyParam
 import java.lang.reflect.Modifier
+import kotlin.coroutines.Continuation
 import java.util.zip.ZipFile
 
 /**
@@ -37,6 +38,8 @@ class WeChatModule : XposedModule() {
         private const val PKG = "com.oplus.gleanerservice"
         private const val CONFIG_REPO = "com.oplus.gleanerservice.config.ConfigRepository"
         private const val ENTITY = "com.oplus.gleanerservice.config.repository.db.SceneRuleBeanEntity"
+        private const val REPO =
+            "com.oplus.gleanerservice.extract.rule.http.RuleConfigHttpRepo"
         /** 规则查询的出口，能挂上的都挂；类不存在就跳过。 */
         private val RULE_OWNERS = arrayOf(
             "com.oplus.gleanerservice.config.SceneRuleDataSource",
@@ -56,6 +59,7 @@ class WeChatModule : XposedModule() {
 
         runCatching { hookEntity(cl) }.onFailure { log("hookEntity: $it") }
         runCatching { hookRuleLists(cl) }.onFailure { log("hookRuleLists: $it") }
+        runCatching { hookRuleConfigRepo(cl) }.onFailure { log("hookRuleConfigRepo: $it") }
 
         // onPackageLoaded 时 Application 可能还没建好，起线程等它，再挂广播接收器
         Thread({ waitAndRegister() }, "WxBillRegister").start()
@@ -66,6 +70,80 @@ class WeChatModule : XposedModule() {
     override fun onPackageReady(param: PackageReadyParam) {
         if (param.packageName != PKG) return
         runCatching { registerReceiver() }.onFailure { log("registerReceiver: $it") }
+    }
+
+    // ------------------------------------------------------------ 记账规则来源（诊断）
+
+    /**
+     * 自动记账识别支付页时，会向服务端要这个页面的规则
+     * （`com.oplus.gleanerservice.extract.rule.http.RuleConfigHttpRepo#getRuleConfig`）。
+     * 小程序容器（AppBrandUI*）服务端没配，回来的是 `data: null`，于是整条链路放弃。
+     *
+     * 这里先只做观测：把挂起函数的真实返回类型、它的字段名记进日志，
+     * 摸清结构之后再决定要不要伪造。
+     */
+    private fun hookRuleConfigRepo(cl: ClassLoader) {
+        val cls = runCatching { cl.loadClass(REPO) }.getOrNull()
+        if (cls == null) {
+            log("WARN: $REPO 不存在")
+            return
+        }
+        var n = 0
+        cls.declaredMethods.forEach { m ->
+            val params = m.parameterTypes
+            if (params.isEmpty()) return@forEach
+            // 挂起函数：返回 Object，最后一个参数是 kotlin.coroutines.*（混淆后可能是短名）
+            if (m.returnType != Any::class.java) return@forEach
+            if (!params.last().name.startsWith("kotlin.coroutines")) return@forEach
+            runCatching {
+                hook(m).intercept { chain ->
+                    val result = chain.proceed()
+                    runCatching {
+                        val cont = chain.args.lastOrNull()
+                        val beanClass = beanTypeOf(cont)
+                        val fields = beanClass?.declaredFields
+                            ?.filterNot { Modifier.isStatic(it.modifiers) }
+                            ?.joinToString(",") { it.name }
+                        val args = chain.args.filterIsInstance<String>()
+                        logOnce(
+                            "repo#${m.name} bean=${beanClass?.name} fields=[$fields] args=$args " +
+                                "resultType=${result?.javaClass?.name}"
+                        )
+                        if (result != null && result != Unit) {
+                            val json = toJson(result)
+                            if (json != null) logOnce("repo#${m.name} json=${json.take(700)}")
+                        }
+                    }
+                    result
+                }
+                n++
+            }.onFailure { log("hook repo#${m.name}: $it") }
+        }
+        if (n == 0) {
+            cls.declaredMethods.take(20).forEach { m ->
+                logOnce("repo sig ${m.name}(${m.parameterTypes.joinToString { it.name }}) ret=${m.returnType.name}")
+            }
+        }
+        log("hookRuleConfigRepo: $n")
+    }
+
+    /** 用进程里的 Gson 把调用结果序列化，摸清结构。 */
+    private fun toJson(value: Any): String? = runCatching {
+        val gsonCls = Class.forName("com.google.gson.Gson")
+        val gson = gsonCls.getDeclaredConstructor().newInstance()
+        gsonCls.getMethod("toJson", Any::class.java).invoke(gson, value) as? String
+    }.getOrNull()
+
+    /** 从 Continuation 的泛型实参里挖出真实的 bean 类。 */
+    private fun beanTypeOf(cont: Any?): Class<*>? {
+        if (cont == null) return null
+        return runCatching {
+            cont.javaClass.genericInterfaces
+                .mapNotNull { it as? java.lang.reflect.ParameterizedType }
+                .flatMap { it.actualTypeArguments.toList() }
+                .mapNotNull { it as? Class<*> }
+                .firstOrNull()
+        }.getOrNull()
     }
 
     /**
