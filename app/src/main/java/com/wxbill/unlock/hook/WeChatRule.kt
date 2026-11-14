@@ -19,6 +19,10 @@ object WeChatRule {
     /** 小程序白名单那一行的 scene。 */
     const val APPLET_SCENE = "AIFluidWxAppletList"
 
+    /** 云控新出的支付场景；这里 ext 只是一个品牌标记。 */
+    const val PAYMENT_SCENE = "flashNotes_payment"
+    const val PAYMENT_WECHAT = "wechat"
+
     /** 小程序页面的 pageName。 */
     const val MINI_PAGE = "支付完成页-微信小程序"
 

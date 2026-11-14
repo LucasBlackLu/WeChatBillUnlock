@@ -175,6 +175,12 @@ class WeChatModule : XposedModule() {
                 runCatching {
                     hook(m).intercept { chain ->
                         val result = chain.proceed()
+                        if (result is List<*> && result.isNotEmpty()) {
+                            val scenes = result.filterNotNull()
+                                .mapNotNull { rowOf(it).scene }
+                                .distinct()
+                            logOnce("list $tag size=${result.size} scenes=${scenes.take(6)}")
+                        }
                         patchAll(result)
                         // 云控里没有小程序行时，补上；补不了就返回原列表
                         injectMiniProgram(result, tag) ?: result
@@ -196,6 +202,39 @@ class WeChatModule : XposedModule() {
      */
     private fun injectMiniProgram(value: Any?, tag: String): List<Any?>? {
         if (value !is List<*>) return null
+
+        // flashNotes_payment：云控只给「微信支付」那几行，小程序容器（AppBrand*）没给，
+        // 小布在小程序页面里就找不到支付规则，只能去问服务端，然后拿回 null。
+        // 这里照抄一行「微信支付」，把小程序容器补进去，ext 保持云控那套品牌标记。
+        val payTemplate = value.firstOrNull { item ->
+            item != null && rowOf(item).scene == WeChatRule.PAYMENT_SCENE &&
+                rowOf(item).appName.orEmpty().contains("微信")
+        }
+        if (payTemplate != null) {
+            val have = value.filterNotNull()
+                .filter { rowOf(it).scene == WeChatRule.PAYMENT_SCENE }
+                .mapNotNull { rowOf(it).pageControl }
+                .toSet()
+            val add = WeChatRule.MINI_ACTIVITIES.filterNot { it in have }
+            if (add.isNotEmpty()) {
+                val out = ArrayList<Any?>(value.size + add.size)
+                out.addAll(value)
+                var n = 0
+                add.forEach { activity ->
+                    val row = cloneEntity(
+                        payTemplate, activity, activity, WeChatRule.PAYMENT_WECHAT, -2000L - n
+                    )
+                    if (row != null) {
+                        out.add(row)
+                        n++
+                    }
+                }
+                if (n > 0) {
+                    logOnce("payment rows +$n -> ${out.size} @$tag")
+                    return out
+                }
+            }
+        }
 
         val template = value.firstOrNull { item ->
             item != null && WeChatRule.isWeChat(rowOf(item))
