@@ -41,45 +41,43 @@ fun AboutPage() {
     val top = rememberStatusBarHeight()
     var showIcon by remember { mutableStateOf(Desktop.iconShown(ctx)) }
     var showAbout by remember { mutableStateOf(false) }
-    var showReplace by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    fun run(sql: File?, bin: File?, keepService: Boolean) {
+    var showImport by remember { mutableStateOf(false) }
+    var picked by remember { mutableStateOf<File?>(null) }
+
+    fun run(file: File?) {
         busy = true
         scope.launch {
-            val r = withContext(Dispatchers.IO) { RulesDb.replace(ctx, sql, bin, keepService) }
+            val r = withContext(Dispatchers.IO) { RulesDb.import(ctx, file) }
             busy = false
             Toast.makeText(ctx, r.message, Toast.LENGTH_LONG).show()
         }
     }
 
-    val pickSql = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val f = RulesDb.copyIn(ctx, uri, "user_rules.sql")
+        val f = RulesDb.copyIn(ctx, uri, "user_import")
         if (f == null) Toast.makeText(ctx, "读不到这个文件", Toast.LENGTH_SHORT).show()
-        else run(f, null, false)
+        else {
+            picked = f
+            showImport = true
+        }
     }
 
-    val pickBin = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        val f = RulesDb.copyIn(ctx, uri, "user_sqlite3")
-        if (f == null) Toast.makeText(ctx, "读不到这个文件", Toast.LENGTH_SHORT).show()
-        else run(null, f, true)
-    }
-
-    if (showReplace) {
+    if (showImport) {
         PuiDialog(
-            title = "替换规则库",
-            text = "把内置的那份规则整表写进 scene_rule，覆盖现有内容。\n\n" +
-                "替换前会把原库备份到 /sdcard/fn-backup.db，替换后需要重启智慧数据感知。",
-            confirmText = "替换",
+            title = "导入 sqlite3",
+            text = "用内置的 sqlite3 把「${picked?.name ?: ""}」灌进 scene_rule。\n\n" +
+                "备份 CSV 会按 id 覆盖；.sql 会整表重灌。替换前先把原库备份到 /sdcard/fn-backup.db。",
+            confirmText = "导入",
             dismissText = "取消",
             danger = true,
-            onDismiss = { showReplace = false },
+            onDismiss = { showImport = false },
             onConfirm = {
-                showReplace = false
-                run(null, null, false)
+                showImport = false
+                run(picked)
             }
         )
     }
@@ -180,25 +178,11 @@ fun AboutPage() {
         item {
             PuiGroup(null) {
                 PuiListRow(
-                    icon = PuiIcon.Filter,
-                    title = "替换规则库",
-                    subtitle = if (busy) "正在处理…" else "内置规则整表重灌 scene_rule",
-                    showChevron = !busy,
-                    onClick = if (busy) null else ({ showReplace = true })
-                )
-                PuiListRow(
                     icon = PuiIcon.Download,
-                    title = "导入规则 SQL",
-                    subtitle = if (busy) "正在处理…" else "选一个 .sql，整表重灌 scene_rule",
-                    showChevron = !busy,
-                    onClick = if (busy) null else ({ pickSql.launch(arrayOf("*/*")) })
-                )
-                PuiListRow(
-                    icon = PuiIcon.Library,
                     title = "导入 sqlite3",
-                    subtitle = if (busy) "正在处理…" else "选一个可执行文件，换掉内置的 sqlite3",
+                    subtitle = if (busy) "正在处理…" else "选备份 CSV 或 .sql，用内置 sqlite3 灌进数据库",
                     showChevron = !busy,
-                    onClick = if (busy) null else ({ pickBin.launch(arrayOf("*/*")) })
+                    onClick = if (busy) null else ({ pickFile.launch(arrayOf("*/*")) })
                 )
                 PuiListRow(
                     icon = PuiIcon.Info,

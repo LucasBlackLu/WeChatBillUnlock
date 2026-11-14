@@ -57,12 +57,13 @@ WeChatBillUnlock/
 
 模块只修补缺字段的行，**规则内容本身在数据库里**。想整表换一份：
 
-- 应用内：设置 → 系统 →「替换规则库」（用内置那份；需要 root，会先备份到 `/sdcard/fn-backup.db`）
-- 应用内：设置 → 系统 →「导入规则 SQL」，选自己的 `.sql` 文件
+- 应用内：设置 → 系统 →「导入 sqlite3」，选备份 CSV（或 `.sql`）；需要 root，会先备份到 `/sdcard/fn-backup.db`
 - 命令行：`python tools\import_csv_rules.py --replace`
 
-内置的 `sqlite3`（`assets/sqlite3`）和目标机器有没有 sqlite3 无关；
-嫌它不合适可以在「导入 sqlite3」里换一个自己编的。
+应用内那条照搬 `root权限执行_一键导入.sh` 的做法：内置 `sqlite3` + awk 把 CSV 拆成
+`DELETE … WHERE id` / `INSERT OR REPLACE`，按 id 覆盖；选到 `.sql` 则整表重灌。
+`sqlite3` 和脚本都在 assets 里（`sqlite3`、`import_rules.sh`、`replace_rules.sh`），
+目标机器有没有 sqlite3 无所谓。
 
 两种方式都是把内置的那份 SQL（`app/src/main/assets/rules.sql`，来自「小布记账」备份导出）
 整表重灌进 `scene_rule`，微信自动记账那几行的 `ext` 会顺手补成完整 JSON。
