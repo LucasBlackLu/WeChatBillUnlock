@@ -36,8 +36,8 @@ fun AboutPage() {
     if (showAbout) {
         PuiDialog(
             title = "小布微信记账",
-            text = "给 ColorOS「小布记忆 → 自动记账」补上微信与微信小程序的规则。\n\n" +
-                "只在读取规则时补齐，不写小布的数据库，也不改它的设置。",
+            text = "给 ColorOS「小布记忆 → 自动记账」补上微信的规则。\n\n" +
+                "规则数据在数据库里，模块只在读取时把缺字段的行补成合法内容。",
             confirmText = "检查更新",
             dismissText = "知道了",
             onDismiss = { showAbout = false },
