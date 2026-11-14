@@ -11,24 +11,19 @@ import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface.PackageLoadedParam
 import io.github.libxposed.api.XposedModuleInterface.PackageReadyParam
 import java.lang.reflect.Modifier
-import kotlin.coroutines.Continuation
-import java.util.zip.ZipFile
 
 /**
  * 微信记账补丁（libxposed API 101）。
  *
- * 只做三件事，全部在「智慧数据感知」进程里，全部只针对微信：
+ * 只做两件事，都在「智慧数据感知」进程里，只针对 `scene_rule` 的微信行：
  *
- *  1. ConfigRepository.v(Context, path)：读取 flashNote/auto_flash_notes_config.json 时，
- *     在返回的 JSON 里补上微信。列表只认这份资产，库里有没有微信规则都不影响它。
+ *  1. `SceneRuleBeanEntity.getExt()`：ext 是 "-1" / 空 / 缺字段时，
+ *     用这一行自己的 pageName / pageControlName 合成一份配置；正常就原样返回。
  *
- *  2. SceneRuleBeanEntity.getExt()：云端把微信行的 ext 下发成 "-1" 时，
- *     用这一行自己的 pageName / pageControlName 合成合法 JSON 返回。
- *     ext 正常时原样返回，绝不覆盖云控。
+ *  2. 返回 List 的规则查询方法：Kotlin 同模块访问属性会直接读字段，
+ *     不一定经过 getter，所以在列表出口把字段也补一遍。
  *
- *  3. 返回 List 的规则查询方法：Kotlin 同模块访问属性会直接读字段，
- *     不一定经过 getter，所以这里在列表出口把字段也补一遍。
- *
+ * 规则内容本身来自数据库（用 tools/import_csv_rules.py 灌进去），模块只做修补。
  * 不写数据库、不改 SharedPreferences、不碰支付宝 / 云闪付 / 其他应用。
  */
 class WeChatModule : XposedModule() {
@@ -38,8 +33,7 @@ class WeChatModule : XposedModule() {
         private const val PKG = "com.oplus.gleanerservice"
         private const val CONFIG_REPO = "com.oplus.gleanerservice.config.ConfigRepository"
         private const val ENTITY = "com.oplus.gleanerservice.config.repository.db.SceneRuleBeanEntity"
-        private const val REPO =
-            "com.oplus.gleanerservice.extract.rule.http.RuleConfigHttpRepo"
+
         /** 规则查询的出口，能挂上的都挂；类不存在就跳过。 */
         private val RULE_OWNERS = arrayOf(
             "com.oplus.gleanerservice.config.SceneRuleDataSource",
@@ -50,7 +44,6 @@ class WeChatModule : XposedModule() {
 
     @Volatile private var patched = 0
     @Volatile private var receiverReady = false
-    @Volatile private var builtinWhitelist: String? = null
     private val logged = HashSet<String>()
 
     override fun onPackageLoaded(param: PackageLoadedParam) {
@@ -59,7 +52,6 @@ class WeChatModule : XposedModule() {
 
         runCatching { hookEntity(cl) }.onFailure { log("hookEntity: $it") }
         runCatching { hookRuleLists(cl) }.onFailure { log("hookRuleLists: $it") }
-        runCatching { hookRuleConfigRepo(cl) }.onFailure { log("hookRuleConfigRepo: $it") }
 
         // onPackageLoaded 时 Application 可能还没建好，起线程等它，再挂广播接收器
         Thread({ waitAndRegister() }, "WxBillRegister").start()
@@ -70,102 +62,6 @@ class WeChatModule : XposedModule() {
     override fun onPackageReady(param: PackageReadyParam) {
         if (param.packageName != PKG) return
         runCatching { registerReceiver() }.onFailure { log("registerReceiver: $it") }
-    }
-
-    // ------------------------------------------------------------ 记账规则来源（诊断）
-
-    /**
-     * 自动记账识别支付页时，会向服务端要这个页面的规则
-     * （`com.oplus.gleanerservice.extract.rule.http.RuleConfigHttpRepo#getRuleConfig`）。
-     * 小程序容器（AppBrandUI*）服务端没配，回来的是 `data: null`，于是整条链路放弃。
-     *
-     * 这里先只做观测：把挂起函数的真实返回类型、它的字段名记进日志，
-     * 摸清结构之后再决定要不要伪造。
-     */
-    private fun hookRuleConfigRepo(cl: ClassLoader) {
-        val cls = runCatching { cl.loadClass(REPO) }.getOrNull()
-        if (cls == null) {
-            log("WARN: $REPO 不存在")
-            return
-        }
-        var n = 0
-        cls.declaredMethods.forEach { m ->
-            val params = m.parameterTypes
-            if (params.isEmpty()) return@forEach
-            // 挂起函数：返回 Object，最后一个参数是 kotlin.coroutines.*（混淆后可能是短名）
-            if (m.returnType != Any::class.java) return@forEach
-            if (!params.last().name.startsWith("kotlin.coroutines")) return@forEach
-            runCatching {
-                hook(m).intercept { chain ->
-                    val result = chain.proceed()
-                    runCatching {
-                        val cont = chain.args.lastOrNull()
-                        val beanClass = beanTypeOf(cont)
-                        val fields = beanClass?.declaredFields
-                            ?.filterNot { Modifier.isStatic(it.modifiers) }
-                            ?.joinToString(",") { it.name }
-                        val args = chain.args.filterIsInstance<String>()
-                        logOnce(
-                            "repo#${m.name} bean=${beanClass?.name} fields=[$fields] args=$args " +
-                                "resultType=${result?.javaClass?.name}"
-                        )
-                        if (result != null && result != Unit) {
-                            val json = toJson(result)
-                            if (json != null) logOnce("repo#${m.name} json=${json.take(700)}")
-                        }
-                    }
-                    result
-                }
-                n++
-            }.onFailure { log("hook repo#${m.name}: $it") }
-        }
-        // 顺便把返回体抓下来：RuleConfigHttpResponse(code, data) 里 data 就是我们缺的东西
-        runCatching {
-            val respCls = cl.loadClass("com.oplus.gleanerservice.extract.rule.http.RuleConfigHttpResponse")
-            respCls.declaredConstructors.forEach { ctor ->
-                runCatching {
-                    hook(ctor).intercept { chain ->
-                        runCatching {
-                            val dump = chain.args.joinToString(" | ") { arg ->
-                                when (arg) {
-                                    null -> "null"
-                                    is String -> arg.take(120)
-                                    else -> toJson(arg)?.take(900) ?: arg.toString()
-                                }
-                            }
-                            logOnce("resp(${chain.args.size}) $dump")
-                        }
-                        chain.proceed()
-                    }
-                }
-            }
-        }.onFailure { log("hook response ctor: $it") }
-
-        if (n == 0) {
-            cls.declaredMethods.take(20).forEach { m ->
-                logOnce("repo sig ${m.name}(${m.parameterTypes.joinToString { it.name }}) ret=${m.returnType.name}")
-            }
-        }
-        log("hookRuleConfigRepo: $n")
-    }
-
-    /** 用进程里的 Gson 把调用结果序列化，摸清结构。 */
-    private fun toJson(value: Any): String? = runCatching {
-        val gsonCls = Class.forName("com.google.gson.Gson")
-        val gson = gsonCls.getDeclaredConstructor().newInstance()
-        gsonCls.getMethod("toJson", Any::class.java).invoke(gson, value) as? String
-    }.getOrNull()
-
-    /** 从 Continuation 的泛型实参里挖出真实的 bean 类。 */
-    private fun beanTypeOf(cont: Any?): Class<*>? {
-        if (cont == null) return null
-        return runCatching {
-            cont.javaClass.genericInterfaces
-                .mapNotNull { it as? java.lang.reflect.ParameterizedType }
-                .flatMap { it.actualTypeArguments.toList() }
-                .mapNotNull { it as? Class<*> }
-                .firstOrNull()
-        }.getOrNull()
     }
 
     /**
@@ -244,7 +140,6 @@ class WeChatModule : XposedModule() {
             val self = chain.thisObject ?: return@intercept raw
             val row = rowOf(self)
             val fixed = WeChatRule.repair(row, raw)
-                ?: WeChatRule.mergeWhitelist(row, raw, whitelistJson())
             if (fixed != null) {
                 patched++
                 logOnce("repair ext at getExt()")
@@ -262,7 +157,7 @@ class WeChatModule : XposedModule() {
         log("hooked getExt()")
     }
 
-    // ------------------------------------------------------------ 3. 列表出口
+    // ------------------------------------------------------------ 2. 列表出口
 
     private fun hookRuleLists(cl: ClassLoader) {
         var n = 0
@@ -271,158 +166,17 @@ class WeChatModule : XposedModule() {
             cls.declaredMethods.forEach { m ->
                 if (!List::class.java.isAssignableFrom(m.returnType)) return@forEach
                 if (m.parameterTypes.size > 4) return@forEach
-                val tag = "${owner.substringAfterLast('.')}#${m.name}"
                 runCatching {
                     hook(m).intercept { chain ->
                         val result = chain.proceed()
-                        if (result is List<*> && result.isNotEmpty()) {
-                            val scenes = result.filterNotNull()
-                                .mapNotNull { rowOf(it).scene }
-                                .distinct()
-                            logOnce("list $tag size=${result.size} scenes=${scenes.take(6)}")
-                        }
                         patchAll(result)
-                        // 云控里没有小程序行时，补上；补不了就返回原列表
-                        injectMiniProgram(result, tag) ?: result
+                        result
                     }
                     n++
                 }
             }
         }
         log("hooked $n list-return(s), repaired=$patched")
-    }
-
-    // ------------------------------------------------------------ 小程序补行
-
-    /**
-     * 云端（上海 IP 那份）的 flashNotes_autoPayment 只给了 7 个 Activity，
-     * 没有任何小程序容器。这里照抄微信那一行的字段，clone 出小程序行。
-     *
-     * Room 实体没有空构造，用 Unsafe.allocateInstance 绕过构造函数，再按字段名覆盖。
-     */
-    private fun injectMiniProgram(value: Any?, tag: String): List<Any?>? {
-        if (value !is List<*>) return null
-
-        // flashNotes_payment：云控只给「微信支付」那几行，小程序容器（AppBrand*）没给，
-        // 小布在小程序页面里就找不到支付规则，只能去问服务端，然后拿回 null。
-        // 这里照抄一行「微信支付」，把小程序容器补进去，ext 保持云控那套品牌标记。
-        val payTemplate = value.firstOrNull { item ->
-            item != null && rowOf(item).scene == WeChatRule.PAYMENT_SCENE &&
-                rowOf(item).appName.orEmpty().contains("微信")
-        }
-        if (payTemplate != null) {
-            val have = value.filterNotNull()
-                .filter { rowOf(it).scene == WeChatRule.PAYMENT_SCENE }
-                .mapNotNull { rowOf(it).pageControl }
-                .toSet()
-            val add = WeChatRule.MINI_ACTIVITIES.filterNot { it in have }
-            if (add.isNotEmpty()) {
-                val out = ArrayList<Any?>(value.size + add.size)
-                out.addAll(value)
-                var n = 0
-                add.forEach { activity ->
-                    val row = cloneEntity(
-                        payTemplate, activity, activity, WeChatRule.PAYMENT_WECHAT, -2000L - n
-                    )
-                    if (row != null) {
-                        out.add(row)
-                        n++
-                    }
-                }
-                if (n > 0) {
-                    logOnce("payment rows +$n -> ${out.size} @$tag")
-                    return out
-                }
-            }
-        }
-
-        val template = value.firstOrNull { item ->
-            item != null && WeChatRule.isWeChat(rowOf(item))
-        } ?: return null
-
-        val existing = value.filterNotNull().mapNotNull { rowOf(it).pageControl }.toSet()
-        val missing = WeChatRule.MINI_ACTIVITIES.filterNot { it in existing }
-        if (missing.isEmpty()) return null
-
-        val appName = rowOf(template).appName.orEmpty().substringBefore('-').ifBlank { "微信" }
-        val out = ArrayList<Any?>(value.size + missing.size)
-        out.addAll(value)
-        var added = 0
-        missing.forEach { activity ->
-            val ext = WeChatRule.build(appName, WeChatRule.MINI_PAGE, activity)
-            val row = cloneEntity(template, WeChatRule.MINI_PAGE, activity, ext, -1000L - added)
-            if (row != null) {
-                out.add(row)
-                added++
-            }
-        }
-        if (added == 0) return null
-        logOnce("mini rows +$added -> ${out.size} @$tag")
-        // 抽查一条，确认 Unsafe 造出来的实体字段确实落对了
-        out.getOrNull(value.size)?.let { first ->
-            val page = rowOf(first).pageName
-            val act = rowOf(first).pageControl
-            val ext = field(first, "ext") as? String
-            logOnce("mini sample: $page | $act | ext=${ext?.length ?: -1}")
-        }
-        return out
-    }
-
-    /** 用 Unsafe 造一个同类型实例，字段逐个照抄模板，再覆盖页面相关字段。 */
-    private fun cloneEntity(
-        template: Any,
-        pageName: String,
-        activity: String,
-        ext: String,
-        id: Long
-    ): Any? {
-        val unsafe = unsafe ?: return null
-        val allocate = allocateInstance ?: return null
-        val copy = runCatching { allocate.invoke(unsafe, template.javaClass) }.getOrNull() ?: return null
-
-        var c: Class<*>? = template.javaClass
-        while (c != null && c != Any::class.java) {
-            c.declaredFields.forEach { f ->
-                if (Modifier.isStatic(f.modifiers)) return@forEach
-                runCatching {
-                    f.isAccessible = true
-                    f.set(copy, f.get(template))
-                }
-            }
-            c = c.superclass
-        }
-
-        setField(copy, "pageName", pageName)
-        setField(copy, "pageControlName", activity)
-        setField(copy, "activityName", activity)
-        setField(copy, "ext", ext)
-        setFieldOfType(copy, "id", id)
-        return copy
-    }
-
-    private val unsafe: Any? by lazy {
-        runCatching {
-            val cls = Class.forName("sun.misc.Unsafe")
-            val f = cls.getDeclaredField("theUnsafe").apply { isAccessible = true }
-            f.get(null)
-        }.getOrNull()
-    }
-
-    private val allocateInstance: java.lang.reflect.Method? by lazy {
-        val u = unsafe ?: return@lazy null
-        runCatching { u.javaClass.getMethod("allocateInstance", Class::class.java) }.getOrNull()
-    }
-
-    /** 只按类型赋值，避免 Long / Integer 对不上丢异常。 */
-    private fun setFieldOfType(obj: Any, name: String, value: Long) {
-        runCatching {
-            val f = obj.javaClass.getDeclaredField(name).apply { isAccessible = true }
-            when (f.type) {
-                java.lang.Long.TYPE -> f.set(obj, value)
-                java.lang.Integer.TYPE -> f.set(obj, value.toInt())
-                else -> Unit
-            }
-        }
     }
 
     private fun patchAll(value: Any?) {
@@ -442,9 +196,7 @@ class WeChatModule : XposedModule() {
         if (item == null || item.javaClass.name != ENTITY) return
         val ext = field(item, "ext") as? String
         val row = rowOf(item)
-        val fixed = WeChatRule.repair(row, ext)
-            ?: WeChatRule.mergeWhitelist(row, ext, whitelistJson())
-            ?: return
+        val fixed = WeChatRule.repair(row, ext) ?: return
         if (setField(item, "ext", fixed)) {
             patched++
             logOnce("repair ext at list-return")
@@ -454,24 +206,6 @@ class WeChatModule : XposedModule() {
                 row.pageName.orEmpty().ifBlank { "支付完成页" },
                 row.pageControl.orEmpty()
             )
-        }
-    }
-
-    /** 模块 assets 里那份小程序白名单（91 个），第一次用到时读出来。 */
-    private fun whitelistJson(): String? {
-        builtinWhitelist?.let { return it.ifEmpty { null } }
-        synchronized(logged) {
-            builtinWhitelist?.let { return it.ifEmpty { null } }
-            val text = runCatching {
-                val info = getModuleApplicationInfo()
-                ZipFile(info.sourceDir).use { zip ->
-                    val entry = zip.getEntry("assets/miniapp_whitelist.json") ?: return@use null
-                    zip.getInputStream(entry).use { it.readBytes().toString(Charsets.UTF_8) }
-                }
-            }.getOrNull()
-            builtinWhitelist = text.orEmpty()
-            if (text != null) logOnce("whitelist loaded ${text.length}B")
-            return text
         }
     }
 
