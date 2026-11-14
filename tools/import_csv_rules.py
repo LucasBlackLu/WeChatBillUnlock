@@ -71,6 +71,7 @@ def sql_quote(s: str) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry", action="store_true")
+    ap.add_argument("--replace", action="store_true", help="先清空 scene_rule 再整表写入")
     args = ap.parse_args()
 
     rows, repaired, skipped = [], 0, 0
@@ -125,8 +126,11 @@ def main() -> None:
                     f"viewId,type,ext,channel) VALUES({values});"
                 )
 
+    head = ".timeout 20000\nBEGIN;\n"
+    if args.replace:
+        head += "DELETE FROM scene_rule;\n"
     SQL_OUT.write_text(
-        ".timeout 10000\nBEGIN;\n" + "\n".join(rows) + "\nCOMMIT;\n"
+        head + "\n".join(rows) + "\nCOMMIT;\n"
         "SELECT 'scene_rule 行数: ' || count(*) FROM scene_rule;\n",
         encoding="utf-8",
     )
