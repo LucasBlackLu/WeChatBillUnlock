@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import com.wxbill.unlock.Const
 import com.wxbill.unlock.core.Desktop
 import com.wxbill.unlock.core.Shell
+import com.wxbill.unlock.pui.PuiDialog
 import com.wxbill.unlock.pui.PuiGroup
 import com.wxbill.unlock.pui.PuiIcon
 import com.wxbill.unlock.pui.PuiListRow
@@ -24,12 +25,29 @@ import com.wxbill.unlock.pui.PuiSectionHeader
 import com.wxbill.unlock.pui.PuiSwitchRow
 import com.wxbill.unlock.pui.rememberStatusBarHeight
 
-/** 设置页：关于 / 快捷入口 / 关注我 / 外观。 */
+/** 设置页：快捷入口 / 支持作者 / 外观 / 系统。 */
 @Composable
 fun AboutPage() {
     val ctx = LocalContext.current
     val top = rememberStatusBarHeight()
     var showIcon by remember { mutableStateOf(Desktop.iconShown(ctx)) }
+    var showAbout by remember { mutableStateOf(false) }
+
+    if (showAbout) {
+        PuiDialog(
+            title = "小布微信记账",
+            text = "给 ColorOS「小布记忆 → 自动记账」补上微信与微信小程序的规则。\n\n" +
+                "版本 ${Const.VERSION}\n\n" +
+                "只在读取规则时补齐，不写小布的数据库，也不改它的设置。",
+            confirmText = "检查更新",
+            dismissText = "知道了",
+            onDismiss = { showAbout = false },
+            onConfirm = {
+                showAbout = false
+                Shell.openUrl(ctx, Const.RELEASES)
+            }
+        )
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -39,7 +57,6 @@ fun AboutPage() {
             PuiPageTitle("设置")
             Spacer(Modifier.height(14.dp))
         }
-
 
         item {
             Spacer(Modifier.height(22.dp))
@@ -61,7 +78,7 @@ fun AboutPage() {
 
         item {
             Spacer(Modifier.height(22.dp))
-            PuiSectionHeader("关注我")
+            PuiSectionHeader("支持作者")
         }
 
         item {
@@ -107,24 +124,19 @@ fun AboutPage() {
 
         item {
             Spacer(Modifier.height(22.dp))
-            PuiSectionHeader("关于")
+            PuiSectionHeader("系统")
         }
 
         item {
             PuiGroup(null) {
                 PuiListRow(
-                    icon = PuiIcon.Element,
-                    title = "小布微信记账",
-                    subtitle = "给「小布记忆 → 自动记账」补上微信与微信小程序的规则"
-                )
-                PuiListRow(
                     icon = PuiIcon.Info,
-                    title = "版本",
-                    subtitle = Const.VERSION,
-                    trailingText = "检查更新",
+                    title = "关于",
+                    subtitle = "简介与更新",
+                    trailingText = Const.VERSION,
                     showChevron = true,
                     showDivider = false,
-                    onClick = { Shell.openUrl(ctx, Const.RELEASES) }
+                    onClick = { showAbout = true }
                 )
             }
         }
