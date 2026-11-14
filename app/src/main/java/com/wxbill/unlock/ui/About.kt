@@ -1,5 +1,8 @@
 package com.wxbill.unlock.ui
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,12 +12,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.wxbill.unlock.Const
 import com.wxbill.unlock.core.Desktop
+import com.wxbill.unlock.core.RulesDb
 import com.wxbill.unlock.core.Shell
 import com.wxbill.unlock.pui.PuiDialog
 import com.wxbill.unlock.pui.PuiGroup
@@ -24,6 +29,10 @@ import com.wxbill.unlock.pui.PuiPageTitle
 import com.wxbill.unlock.pui.PuiSectionHeader
 import com.wxbill.unlock.pui.PuiSwitchRow
 import com.wxbill.unlock.pui.rememberStatusBarHeight
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 /** 设置页：快捷入口 / 支持作者 / 外观 / 系统。 */
 @Composable
@@ -32,6 +41,48 @@ fun AboutPage() {
     val top = rememberStatusBarHeight()
     var showIcon by remember { mutableStateOf(Desktop.iconShown(ctx)) }
     var showAbout by remember { mutableStateOf(false) }
+    var showReplace by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    fun run(sql: File?, bin: File?, keepService: Boolean) {
+        busy = true
+        scope.launch {
+            val r = withContext(Dispatchers.IO) { RulesDb.replace(ctx, sql, bin, keepService) }
+            busy = false
+            Toast.makeText(ctx, r.message, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    val pickSql = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val f = RulesDb.copyIn(ctx, uri, "user_rules.sql")
+        if (f == null) Toast.makeText(ctx, "读不到这个文件", Toast.LENGTH_SHORT).show()
+        else run(f, null, false)
+    }
+
+    val pickBin = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val f = RulesDb.copyIn(ctx, uri, "user_sqlite3")
+        if (f == null) Toast.makeText(ctx, "读不到这个文件", Toast.LENGTH_SHORT).show()
+        else run(null, f, true)
+    }
+
+    if (showReplace) {
+        PuiDialog(
+            title = "替换规则库",
+            text = "把内置的那份规则整表写进 scene_rule，覆盖现有内容。\n\n" +
+                "替换前会把原库备份到 /sdcard/fn-backup.db，替换后需要重启智慧数据感知。",
+            confirmText = "替换",
+            dismissText = "取消",
+            danger = true,
+            onDismiss = { showReplace = false },
+            onConfirm = {
+                showReplace = false
+                run(null, null, false)
+            }
+        )
+    }
 
     if (showAbout) {
         PuiDialog(
@@ -128,6 +179,27 @@ fun AboutPage() {
 
         item {
             PuiGroup(null) {
+                PuiListRow(
+                    icon = PuiIcon.Filter,
+                    title = "替换规则库",
+                    subtitle = if (busy) "正在处理…" else "内置规则整表重灌 scene_rule",
+                    showChevron = !busy,
+                    onClick = if (busy) null else ({ showReplace = true })
+                )
+                PuiListRow(
+                    icon = PuiIcon.Download,
+                    title = "导入规则 SQL",
+                    subtitle = if (busy) "正在处理…" else "选一个 .sql，整表重灌 scene_rule",
+                    showChevron = !busy,
+                    onClick = if (busy) null else ({ pickSql.launch(arrayOf("*/*")) })
+                )
+                PuiListRow(
+                    icon = PuiIcon.Library,
+                    title = "导入 sqlite3",
+                    subtitle = if (busy) "正在处理…" else "选一个可执行文件，换掉内置的 sqlite3",
+                    showChevron = !busy,
+                    onClick = if (busy) null else ({ pickBin.launch(arrayOf("*/*")) })
+                )
                 PuiListRow(
                     icon = PuiIcon.Info,
                     title = "关于",
