@@ -31,7 +31,6 @@ import com.wxbill.unlock.pui.PuiHeroCard
 import com.wxbill.unlock.pui.PuiIcon
 import com.wxbill.unlock.pui.PuiListRow
 import com.wxbill.unlock.pui.PuiNoticeCard
-import com.wxbill.unlock.pui.PuiNoticeTone
 import com.wxbill.unlock.pui.PuiPageTitle
 import com.wxbill.unlock.pui.PuiSectionHeader
 import com.wxbill.unlock.pui.rememberStatusBarHeight
@@ -180,21 +179,10 @@ fun HomePage(
         item {
             Spacer(Modifier.height(16.dp))
             PuiNoticeCard(
-                title = "微信开关没出现？",
-                text = "确认 LSPosed 里模块已启用、作用域勾了「智慧数据感知」，" +
-                    "再点「重启智慧数据感知」。",
+                title = "这些暂时记不上",
+                text = "在京东、美团这类应用里直接付款，或在京东购物等小程序里付款，" +
+                    "目前记不上账。付完落到微信收银台、账单页的能记。",
                 icon = PuiIcon.Info
-            )
-        }
-
-        item {
-            Spacer(Modifier.height(12.dp))
-            PuiNoticeCard(
-                title = "三方支付暂不支持",
-                text = "京东、美团等三方应用内使用微信支付时暂不支持：支付页是透明浮层，" +
-                    "系统取不到内容，记不了账。请改用支付宝，或在微信原生支付页付款。",
-                icon = PuiIcon.Warning,
-                tone = PuiNoticeTone.Warning
             )
         }
     }

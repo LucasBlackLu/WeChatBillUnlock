@@ -75,6 +75,12 @@ object Shell {
             ?: Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:org.lsposed.manager"))
     )
 
+    /** 浏览器打开链接；没有浏览器就退回复制不了，什么都不做。 */
+    fun openUrl(ctx: Context, url: String) = start(
+        ctx,
+        Intent(Intent.ACTION_VIEW, Uri.parse(url))
+    )
+
     /** KernelSU / Magisk 的授权入口。 */
     fun openRootManager(ctx: Context) {
         val pkg = when {

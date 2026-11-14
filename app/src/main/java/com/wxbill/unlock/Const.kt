@@ -3,7 +3,7 @@ package com.wxbill.unlock
 /** 模块类和应用类都会读到，只放纯常量。 */
 object Const {
 
-    const val VERSION = "2.1.0"
+    const val VERSION = "2.1.1"
 
     /** 智慧数据感知 */
     const val TARGET = "com.oplus.gleanerservice"
@@ -15,6 +15,9 @@ object Const {
 
     /** 应用 → 模块：请帮我打开自动记账页 */
     const val ACTION_OPEN_BILL = "com.wxbill.unlock.action.OPEN_BILL"
+
+    /** 仓库地址 */
+    const val GITHUB = "https://github.com/LucasBlackLu/WeChatBillUnlock"
 
     /** 模块 → 应用：PendingIntent 给你，你来发（前台应用才有后台启动豁免） */
     const val ACTION_OPEN_BILL_READY = "com.wxbill.unlock.action.OPEN_BILL_READY"

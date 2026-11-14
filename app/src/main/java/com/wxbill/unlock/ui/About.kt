@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.wxbill.unlock.Const
 import com.wxbill.unlock.core.Desktop
 import com.wxbill.unlock.core.Shell
 import com.wxbill.unlock.pui.PuiGroup
@@ -62,8 +63,20 @@ fun AboutPage() {
                     title = "打开 LSPosed",
                     subtitle = "检查模块是否启用、作用域是否勾选",
                     showChevron = true,
-                    showDivider = false,
                     onClick = { Shell.openLsposed(ctx) }
+                )
+                PuiListRow(
+                    icon = PuiIcon.Share,
+                    title = "GitHub",
+                    subtitle = "LucasBlackLu/WeChatBillUnlock",
+                    showChevron = true,
+                    onClick = { Shell.openUrl(ctx, Const.GITHUB) }
+                )
+                PuiListRow(
+                    icon = PuiIcon.Info,
+                    title = "版本",
+                    subtitle = Const.VERSION,
+                    showDivider = false
                 )
             }
         }
