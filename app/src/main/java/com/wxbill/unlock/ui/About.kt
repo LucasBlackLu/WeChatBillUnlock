@@ -37,7 +37,6 @@ fun AboutPage() {
         PuiDialog(
             title = "小布微信记账",
             text = "给 ColorOS「小布记忆 → 自动记账」补上微信与微信小程序的规则。\n\n" +
-                "版本 ${Const.VERSION}\n\n" +
                 "只在读取规则时补齐，不写小布的数据库，也不改它的设置。",
             confirmText = "检查更新",
             dismissText = "知道了",
@@ -132,8 +131,7 @@ fun AboutPage() {
                 PuiListRow(
                     icon = PuiIcon.Info,
                     title = "关于",
-                    subtitle = "简介与更新",
-                    trailingText = Const.VERSION,
+                    subtitle = Const.VERSION,
                     showChevron = true,
                     showDivider = false,
                     onClick = { showAbout = true }
